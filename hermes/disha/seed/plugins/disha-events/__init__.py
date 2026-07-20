@@ -1,19 +1,16 @@
 """Seeded verbatim to $HERMES_HOME/plugins/disha-events/__init__.py by
 control_plane/plugin_seed.py.
 
-Fires CRM `message_in` / `voice_note` events for every inbound message
-(HANDOVER.md §2.2.1 / §6.2's events schema).
+Fires a CRM `message_in` event for every inbound message (HANDOVER.md
+§2.2.1 / §6.2's events schema). Product scope is text-only for now
+(Hindi/English/Hinglish, no voice notes — see stt.enabled: false in
+config_writer.py), so there's no voice/message-type detection here.
 
 Registered as a generic plugin hook (pre_gateway_dispatch), NOT a
 gateway hook (~/.hermes/hooks/), because gateway hooks' agent:start
-context doesn't include the raw MessageEvent.message_type field, and
-that's the only reliable, pre-transcription signal for "was this a
-voice note" — confirmed by reading gateway/run.py: line ~12798 checks
-`event.message_type == MessageType.VOICE` internally, but the
-agent:start hook_ctx dict built earlier in the same file (~line 11310)
-never forwards that field. pre_gateway_dispatch receives the raw event
-directly. Purely observational here — always returns None, never
-skips or rewrites the message.
+context doesn't include the raw MessageEvent object — pre_gateway_dispatch
+does. Purely observational here — always returns None, never skips or
+rewrites the message.
 
 Generic plugins are opt-in (plugins.enabled in config.yaml) — unlike
 the disha-students memory provider, which activates via memory.provider
@@ -36,18 +33,8 @@ def on_inbound_message(event, gateway=None, session_store=None, **kwargs):
         if not student_id:
             return None
 
-        message_type = getattr(event, "message_type", None)
-        is_voice = getattr(message_type, "value", None) == "voice"
         text = event.text or ""
-
-        crm_client.log_event(
-            student_id,
-            "message_in",
-            text[:200] if text else "(voice note)",
-            meta={"is_voice": is_voice, "length": len(text)},
-        )
-        if is_voice:
-            crm_client.log_event(student_id, "voice_note", "voice note received")
+        crm_client.log_event(student_id, "message_in", text[:200], meta={"length": len(text)})
     except Exception:
         pass  # never let CRM logging break message delivery
     return None

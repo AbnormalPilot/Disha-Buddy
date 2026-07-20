@@ -78,16 +78,12 @@ export default function CrmDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="Students" value={stats.students} />
         <StatCard label="Active today" value={stats.activeToday} />
         <StatCard label="Messages" value={stats.messages} />
-        <StatCard label="Voice notes" value={stats.voiceNotes} />
         <StatCard label="Alerts sent" value={stats.deadlineAlerts} />
-        <StatCard
-          label="Flags"
-          value={stats.flags}
-        />
+        <StatCard label="Flags" value={stats.flags} />
       </div>
 
       <div className="rounded border border-neutral-800 bg-neutral-900 p-4">

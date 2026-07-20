@@ -91,7 +91,7 @@ def send(path: str, payload: dict) -> None:
 
 
 def log_event(student_id: str, event_type: str, summary: str, meta: dict | None = None) -> None:
-    """type: one of message_in|message_out|voice_note|profile_update|
+    """type: one of message_in|message_out|profile_update|
     college_recommended|deadline_alert|live_lookup|cron_ping|flag
     (see HANDOVER.md §6.2's events table)."""
     if not student_id:

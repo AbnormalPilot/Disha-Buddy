@@ -24,10 +24,6 @@ class ConfigRequest(BaseModel):
     llm_model: str | None = None
     llm_base_url: str | None = None
 
-    transcription_provider: str | None = None
-    transcription_api_key: str | None = None
-    voice_enabled: bool = True
-
     datablue_api_key: str | None = None
     persona_extra_instructions: str | None = None
 

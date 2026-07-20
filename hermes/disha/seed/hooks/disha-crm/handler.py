@@ -6,8 +6,8 @@ triggered by the scheduler — cron turns run with platform == "cron",
 per HANDOVER.md §3.3 and confirmed by the earlier architecture
 research pass) CRM events. Gateway hooks (this file) run automatically
 with no plugins.enabled opt-in needed — see disha-events for the
-generic-plugin half (voice detection, safety flags), which does need
-that opt-in.
+generic-plugin half (inbound message logging, safety flags), which
+does need that opt-in.
 """
 from disha import crm_client
 

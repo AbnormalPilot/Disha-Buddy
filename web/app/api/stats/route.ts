@@ -19,7 +19,6 @@ export async function GET() {
     (db.prepare(`SELECT COUNT(*) AS n FROM events WHERE type = ?`).get(type) as any).n;
 
   const messages = countByType("message_in") + countByType("message_out");
-  const voiceNotes = countByType("voice_note");
   const deadlineAlerts = countByType("deadline_alert") + countByType("cron_ping");
   const flags = countByType("flag");
 
@@ -45,7 +44,6 @@ export async function GET() {
     students: studentCount,
     activeToday,
     messages,
-    voiceNotes,
     deadlineAlerts,
     flags,
     sparkline,

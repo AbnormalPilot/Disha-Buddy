@@ -91,34 +91,6 @@ async def validate_llm(provider: str | None, api_key: str | None, base_url: str 
     return {"ok": True, "message": f"{provider} reachable at {resolved_base_url}"}
 
 
-async def validate_transcription(provider: str | None, api_key: str | None) -> dict:
-    if not provider:
-        return {"ok": False, "message": "no transcription provider selected"}
-    if provider == "local":
-        return {"ok": True, "message": "local (faster-whisper) needs no external key"}
-    if not api_key:
-        return {"ok": False, "message": "API key required for this provider"}
-    endpoints = {
-        "groq": ("https://api.groq.com/openai/v1/models", {"Authorization": f"Bearer {api_key}"}),
-        "openai": ("https://api.openai.com/v1/models", {"Authorization": f"Bearer {api_key}"}),
-        "mistral": ("https://api.mistral.ai/v1/models", {"Authorization": f"Bearer {api_key}"}),
-        "xai": ("https://api.x.ai/v1/models", {"Authorization": f"Bearer {api_key}"}),
-    }
-    if provider not in endpoints:
-        return {"ok": False, "message": f"unknown transcription provider {provider!r}"}
-    url, headers = endpoints[provider]
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(url, headers=headers)
-    except httpx.HTTPError as exc:
-        return {"ok": False, "message": f"network error: {exc}"}
-    if resp.status_code in (401, 403):
-        return {"ok": False, "message": f"provider rejected the API key (HTTP {resp.status_code})"}
-    if resp.status_code >= 400:
-        return {"ok": False, "message": f"provider returned HTTP {resp.status_code}"}
-    return {"ok": True, "message": f"{provider} transcription key valid"}
-
-
 async def validate_datablue(api_key: str | None) -> dict:
     if not api_key:
         return {"ok": False, "message": "no DataBlue API key provided"}
@@ -146,6 +118,5 @@ async def validate_all(payload: WizardPayload) -> dict:
     return {
         "telegram": await validate_telegram(payload.telegram_bot_token),
         "llm": await validate_llm(payload.llm_provider, payload.llm_api_key, payload.llm_base_url, payload.llm_model),
-        "transcription": await validate_transcription(payload.transcription_provider, payload.transcription_api_key),
         "datablue": await validate_datablue(payload.datablue_api_key),
     }

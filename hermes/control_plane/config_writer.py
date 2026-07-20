@@ -49,9 +49,6 @@ PROVIDER_API_KEY_ENV = {
     "nous": "NOUS_API_KEY",
 }
 
-TRANSCRIPTION_PROVIDERS = {"groq", "openai", "mistral", "xai", "local"}
-
-
 class ConfigWriteError(RuntimeError):
     def __init__(self, key: str, returncode: int, output: str):
         self.key = key
@@ -188,10 +185,6 @@ class WizardPayload:
     llm_model: str | None = None
     llm_base_url: str | None = None  # only required/used when llm_provider == "custom"
 
-    transcription_provider: str | None = None  # groq | openai | mistral | xai | local
-    transcription_api_key: str | None = None
-    voice_enabled: bool = True
-
     datablue_api_key: str | None = None
 
     persona_extra_instructions: str | None = None
@@ -200,7 +193,7 @@ class WizardPayload:
 
     def redacted(self) -> dict:
         d = self.__dict__.copy()
-        for k in ("telegram_bot_token", "llm_api_key", "transcription_api_key", "datablue_api_key"):
+        for k in ("telegram_bot_token", "llm_api_key", "datablue_api_key"):
             if d.get(k):
                 d[k] = d[k][:4] + "***REDACTED***"
         return d
@@ -267,17 +260,10 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
             setk("model.api_key", payload.llm_api_key)
         setk("model.default", payload.llm_model)
 
-    if payload.transcription_provider:
-        setk("stt.provider", payload.transcription_provider)
-        setk("stt.enabled", "true" if payload.voice_enabled else "false")
-        key_env = {
-            "groq": "GROQ_API_KEY",
-            "openai": "VOICE_TOOLS_OPENAI_KEY",
-            "mistral": "MISTRAL_API_KEY",
-            "xai": "XAI_API_KEY",
-        }.get(payload.transcription_provider)
-        if key_env:
-            setk(key_env, payload.transcription_api_key)
+    # Product scope is text-only for now (Hindi/English/Hinglish, no voice
+    # notes) — fixed default, not a wizard field, same pattern as
+    # disabled_toolsets below.
+    setk("stt.enabled", "false")
 
     if payload.datablue_api_key:
         # DataBlue ships an official stdio MCP server (npm package

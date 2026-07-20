@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Button, Field, Select, StepShell, TextArea, TextInput, ValidateBadge } from "./ui";
 import { EMPTY_FORM, toConfigPayload, type ValidateAllResponse, type ValidateResult, type WizardFormState } from "./types";
 
-const STEP_TITLES = ["Telegram", "Brain", "Voice", "Data", "Persona", "Launch"];
+const STEP_TITLES = ["Telegram", "Brain", "Data", "Persona", "Launch"];
 
 const LLM_PROVIDERS = [
   { value: "openrouter", label: "OpenRouter" },
@@ -14,14 +14,6 @@ const LLM_PROVIDERS = [
   { value: "gemini", label: "Google Gemini" },
   { value: "nous", label: "Nous Portal (API key)" },
   { value: "custom", label: "Custom (OpenAI-compatible base URL)" },
-];
-
-const TRANSCRIPTION_PROVIDERS = [
-  { value: "groq", label: "Groq (Whisper, fast + cheap)" },
-  { value: "openai", label: "OpenAI" },
-  { value: "mistral", label: "Mistral" },
-  { value: "xai", label: "xAI" },
-  { value: "local", label: "Local (faster-whisper, no key needed)" },
 ];
 
 async function api(path: string, opts?: RequestInit) {
@@ -58,8 +50,6 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
         llm_provider: cfg.llm_provider ?? "",
         llm_model: cfg.llm_model ?? "",
         llm_base_url: cfg.llm_base_url ?? "",
-        transcription_provider: cfg.transcription_provider ?? "",
-        voice_enabled: cfg.voice_enabled ?? true,
         persona_extra_instructions: cfg.persona_extra_instructions ?? "",
         telegram_allowed_users: (cfg.telegram_allowed_users ?? []).join(", "),
       }));
@@ -214,63 +204,6 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
 
       {step === 2 && (
         <StepShell
-          title="Voice notes"
-          description="Students often send voice notes instead of typing. Pick a transcription provider, or turn voice off for now."
-          step={step}
-          totalSteps={totalSteps}
-        >
-          <Field label="Enable voice notes">
-            <label className="flex items-center gap-2 text-sm text-neutral-300">
-              <input
-                type="checkbox"
-                checked={form.voice_enabled}
-                onChange={(e) => set("voice_enabled", e.target.checked)}
-              />
-              Transcribe incoming voice messages
-            </label>
-          </Field>
-          {form.voice_enabled && (
-            <>
-              <Field label="Transcription provider">
-                <Select
-                  value={form.transcription_provider}
-                  onChange={(v) => set("transcription_provider", v as WizardFormState["transcription_provider"])}
-                  options={TRANSCRIPTION_PROVIDERS}
-                />
-              </Field>
-              {form.transcription_provider && form.transcription_provider !== "local" && (
-                <Field label="API key">
-                  <TextInput
-                    type="password"
-                    value={form.transcription_api_key}
-                    onChange={(e) => set("transcription_api_key", e.target.value)}
-                  />
-                </Field>
-              )}
-              <ValidateBadge result={validation.transcription} />
-            </>
-          )}
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(1)}>
-              Back
-            </Button>
-            {form.voice_enabled && (
-              <Button variant="secondary" onClick={runValidate} disabled={validating || !form.transcription_provider}>
-                {validating ? "Checking…" : "Validate"}
-              </Button>
-            )}
-            <Button
-              onClick={() => setStep(3)}
-              disabled={form.voice_enabled && !!form.transcription_provider && !validation.transcription?.ok}
-            >
-              Next
-            </Button>
-          </div>
-        </StepShell>
-      )}
-
-      {step === 3 && (
-        <StepShell
           title="College data"
           description="DataBlue powers cached college data and live counseling-deadline lookups."
           step={step}
@@ -301,13 +234,13 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
             )}
           </div>
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(2)}>
+            <Button variant="secondary" onClick={() => setStep(1)}>
               Back
             </Button>
             <Button variant="secondary" onClick={runValidate} disabled={validating || !form.datablue_api_key}>
               {validating ? "Checking…" : "Validate"}
             </Button>
-            <Button onClick={() => setStep(4)}>Next</Button>
+            <Button onClick={() => setStep(3)}>Next</Button>
           </div>
           {!form.datablue_api_key && (
             <p className="text-xs text-neutral-500">
@@ -317,7 +250,7 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
         </StepShell>
       )}
 
-      {step === 4 && (
+      {step === 3 && (
         <StepShell
           title="Persona"
           description="This is Disha's default voice and standing rules — not editable here, but you can add extra instructions on top."
@@ -340,20 +273,20 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
             />
           </Field>
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(3)}>
+            <Button variant="secondary" onClick={() => setStep(2)}>
               Back
             </Button>
-            <Button onClick={() => setStep(5)}>Next</Button>
+            <Button onClick={() => setStep(4)}>Next</Button>
           </div>
         </StepShell>
       )}
 
-      {step === 5 && (
+      {step === 4 && (
         <StepShell title="Launch" description="Review, then start the bot." step={step} totalSteps={totalSteps}>
           <ul className="flex flex-col gap-1 rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
             <li>Telegram bot: @{form.telegram_bot_username || "(not validated)"}</li>
             <li>LLM: {form.llm_provider} — {form.llm_model || "(default model)"}</li>
-            <li>Voice notes: {form.voice_enabled ? `on (${form.transcription_provider || "not set"})` : "off"}</li>
+            <li>Language: Hindi / English / Hinglish (text only)</li>
             <li>DataBlue: {form.datablue_api_key ? "configured" : "not configured"}</li>
           </ul>
           {launchError && <ValidateBadge result={{ ok: false, message: launchError }} />}
@@ -379,7 +312,7 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
             </div>
           ) : (
             <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => setStep(4)} disabled={launching}>
+              <Button variant="secondary" onClick={() => setStep(3)} disabled={launching}>
                 Back
               </Button>
               <Button onClick={handleLaunch} disabled={launching}>

@@ -51,12 +51,11 @@ export function getDb(): Database.Database {
   return globalThis.__dishaDb;
 }
 
-// type: message_in|message_out|voice_note|profile_update|
+// type: message_in|message_out|profile_update|
 //       college_recommended|deadline_alert|live_lookup|cron_ping|flag
 export const EVENT_TYPES = [
   "message_in",
   "message_out",
-  "voice_note",
   "profile_update",
   "college_recommended",
   "deadline_alert",

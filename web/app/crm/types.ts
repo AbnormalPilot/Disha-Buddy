@@ -2,7 +2,6 @@ export interface StatsResponse {
   students: number;
   activeToday: number;
   messages: number;
-  voiceNotes: number;
   deadlineAlerts: number;
   flags: number;
   sparkline: { day: string; n: number }[];
@@ -52,7 +51,6 @@ export interface StudentDetail {
 export const EVENT_ICONS: Record<string, string> = {
   message_in: "→",
   message_out: "←",
-  voice_note: "\u{1F3A4}",
   profile_update: "\u{1F4DD}",
   college_recommended: "\u{1F3EB}",
   deadline_alert: "⏰",

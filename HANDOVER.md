@@ -1,5 +1,14 @@
 # HANDOVER — "Disha Buddy" (working name, feel free to rename)
 
+> **Scope amendment (2026-07-20):** voice-note support (§2.3, the
+> Voice wizard step in §6.1, the `voice_note` CRM event type in §6.2,
+> and every other voice/transcription reference below) has been cut
+> from scope. Disha is **text-only** — Hindi, English, and Hinglish.
+> Everything below is preserved as the original brief; where it
+> mentions voice, treat it as superseded by this note rather than
+> edited in place, so the historical record of what was actually asked
+> for stays intact.
+
 **Read this whole file before writing any code.**
 
 You are building a self-contained, dockerized system for the **India AI Impact Festival 2026** submission (deadline: **July 26, 2026** — hard, six days):

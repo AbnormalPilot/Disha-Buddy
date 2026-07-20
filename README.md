@@ -18,11 +18,13 @@ docker compose up -d
 ```
 
 Then open **http://localhost:3000/hermes** and go through the setup
-wizard — Telegram bot token, an LLM provider key, optionally a
-transcription provider for voice notes, and a DataBlue API key for
-college data. Each step validates live against the real provider
-before you can continue. On the last step, "Save & start" launches the
-gateway and shows a `t.me/<your_bot>` link.
+wizard — Telegram bot token, an LLM provider key, and a DataBlue API
+key for college data. Each step validates live against the real
+provider before you can continue. On the last step, "Save & start"
+launches the gateway and shows a `t.me/<your_bot>` link plus a QR code.
+
+Disha is text-only for now — Hindi, English, and Hinglish, no voice
+notes.
 
 No SSH, no CLI setup, no local installs beyond Docker. That one wizard
 pass is the entire operator experience; config persists on the `./data`
@@ -70,7 +72,6 @@ What still needs a real Telegram bot + LLM key to confirm, because
 there's no way around actually running a conversation:
 
 - The bot answering a real Telegram message end-to-end.
-- Voice note transcription quality on Hinglish/Indian-accented audio.
 - The safety red-team conversations (does the model actually respond
   with empathy + a helpline on distress, actually refuse adult content,
   actually give an honest non-guarantee) — the rules are written into
@@ -90,19 +91,18 @@ there's no way around actually running a conversation:
    explain: two containers, one vendored-and-customized open-source
    agent core, one Next.js app — no other moving parts.
 2. **The wizard** (45s). Open `/hermes`. Walk through Telegram → Brain →
-   Voice → Data → Persona → Launch. Pause on a Validate button actually
-   failing against a wrong key, then succeeding against a real one —
-   this is a real live check against each provider's API, not a form
-   that accepts anything.
+   Data → Persona → Launch. Pause on a Validate button actually failing
+   against a wrong key, then succeeding against a real one — this is a
+   real live check against each provider's API, not a form that accepts
+   anything. Show the QR code on the Launch screen.
 3. **Talk to the bot** (60s). Open the `t.me/` link the wizard gave you.
-   Introduce yourself with marks/stream/budget. Ask about a college.
-   Send a voice note. Run `/new`, come back, ask "what do you remember
-   about me?" — full recall, from a fresh session, because memory is
-   keyed per-student, not per-conversation.
+   Introduce yourself with marks/stream/budget, in Hindi, English, or
+   both mixed together. Ask about a college. Run `/new`, come back, ask
+   "what do you remember about me?" — full recall, from a fresh
+   session, because memory is keyed per-student, not per-conversation.
 4. **The CRM** (30s). Open `/crm` in another tab. Point at the events
-   that just appeared — the message you sent, the voice note, the
-   profile fields it extracted — landing within seconds, not on a
-   delay.
+   that just appeared — the messages you sent, the profile fields it
+   extracted — landing within seconds, not on a delay.
 5. **The landing page** (15s). Open `/`. The hero conversation is the
    pitch: memory + texting first, made concrete instead of asserted.
 

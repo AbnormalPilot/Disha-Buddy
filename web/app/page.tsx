@@ -88,7 +88,7 @@ export default async function LandingPage() {
           <p className="mt-3 max-w-xl text-ink-soft">
             Every college website makes you start over. Disha doesn&apos;t.
           </p>
-          <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-3">
             {[
               {
                 title: "Never re-explains itself",
@@ -99,12 +99,8 @@ export default async function LandingPage() {
                 body: "A counseling round closing in 72 hours? You hear about it before you have to ask.",
               },
               {
-                title: "Voice notes work",
-                body: "Too tired to type after coaching? Send a voice note in Hindi or Hinglish — Disha gets it.",
-              },
-              {
                 title: "Talks like a person",
-                body: "Not shuddh Hindi, not corporate English — however you mix it, Disha mixes it back.",
+                body: "Hindi, English, or however you mix the two — not shuddh Hindi, not corporate English, however you write it, Disha writes it back.",
               },
             ].map((f) => (
               <div key={f.title} className="rounded-xl border border-rule bg-paper p-5">
