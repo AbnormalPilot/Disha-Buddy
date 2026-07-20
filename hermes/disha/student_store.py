@@ -58,6 +58,25 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+def iter_all_profiles():
+    """Yields (telegram_user_id, profile_dict) for every known student.
+    Used by cron scripts (deadline_sweep.py) that need to scan every
+    student's profile — small pilot-scale numbers, so a full table scan
+    is fine; revisit if this ever needs an index on a specific field.
+    """
+    with _lock:
+        conn = _connect()
+        try:
+            rows = conn.execute("SELECT telegram_user_id, profile_json FROM students").fetchall()
+        finally:
+            conn.close()
+    for telegram_user_id, profile_json in rows:
+        try:
+            yield telegram_user_id, (json.loads(profile_json) if profile_json else {})
+        except json.JSONDecodeError:
+            yield telegram_user_id, {}
+
+
 def get_profile(telegram_user_id: str) -> dict:
     if not telegram_user_id:
         return {}

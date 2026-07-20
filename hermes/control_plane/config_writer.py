@@ -314,6 +314,11 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
     _enable_plugin("disha-events")
     applied.append("plugins.enabled")
 
+    # India-focused product — cron schedules (08:00 deadline sweep, etc.,
+    # see cron_seed.py) are written in IST and need this to fire at the
+    # right wall-clock time rather than server-local (usually UTC).
+    setk("timezone", "Asia/Kolkata")
+
     _persist_wizard_payload(payload)
     return applied
 

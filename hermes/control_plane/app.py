@@ -5,7 +5,7 @@ import time
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config_writer, gateway_ctl, persona, plugin_seed, validators
+from . import config_writer, cron_seed, gateway_ctl, persona, plugin_seed, validators
 from .auth import require_control_token
 from .config_writer import WizardPayload
 from .state import ensure_dirs
@@ -43,6 +43,7 @@ async def _startup() -> None:
     # genuinely one-time: if a previous run already configured and
     # started the gateway, bring it back up without operator action.
     if config_writer.is_configured():
+        cron_seed.seed_jobs()
         state = gateway_ctl._read_state()  # noqa: SLF001
         if state.get("desired") == "running":
             try:
@@ -120,6 +121,7 @@ async def validate(body: ConfigRequest, _: None = Depends(require_control_token)
 async def gateway_start(_: None = Depends(require_control_token)) -> dict:
     if not config_writer.is_configured():
         raise HTTPException(status_code=400, detail="not configured yet — POST /config first")
+    cron_seed.seed_jobs()
     try:
         gateway_ctl.start()
     except gateway_ctl.GatewayCommandError as exc:

@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import subprocess
 import threading
 from typing import Any
 
@@ -105,8 +106,74 @@ def _run_extraction(telegram_user_id: str, user_content: str, assistant_content:
         crm_client.log_event(
             telegram_user_id, "profile_update", f"learned: {', '.join(delta.keys())}", meta=delta
         )
+        if "entrance_exams" in delta:
+            _schedule_exam_eve_jobs(telegram_user_id, delta["entrance_exams"])
     except Exception:
         logger.exception("profile extraction failed for student %s", telegram_user_id)
+
+
+def _schedule_exam_eve_jobs(telegram_user_id: str, entrance_exams) -> None:
+    """HANDOVER.md §3.3b: per-student exam-eve good-luck + next-day
+    "how did it go?". Runs in the same background thread as extraction
+    (sync_turn's threading contract already covers this — no separate
+    thread needed). Uses subprocess, which is fine here: this executes
+    from the memory-provider's background thread, not the sandboxed
+    conversational agent loop, so it isn't affected by the terminal
+    toolset being disabled for students.
+    """
+    if not isinstance(entrance_exams, list):
+        return
+    for exam in entrance_exams:
+        if not isinstance(exam, dict) or not exam.get("date") or not exam.get("name"):
+            continue
+        exam_name = exam["name"]
+        exam_date = exam["date"]  # YYYY-MM-DD, as the extraction prompt requests
+        job_base = f"disha-exam-{telegram_user_id}-{exam_name}"[:60]
+        try:
+            subprocess.run(
+                [
+                    "hermes", "cron", "add",
+                    f"1 18 {_day_before(exam_date)}",
+                    (
+                        f"Send {telegram_user_id} a short, warm good-luck message "
+                        f"(Hinglish, Disha's voice) for {exam_name} tomorrow."
+                    ),
+                    "--deliver", f"telegram:{telegram_user_id}",
+                    "--repeat", "1",
+                    "--name", f"{job_base}-eve",
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+            subprocess.run(
+                [
+                    "hermes", "cron", "add",
+                    f"1 20 {_day_of(exam_date)}",
+                    (
+                        f"Send {telegram_user_id} a short, warm check-in (Hinglish, "
+                        f"Disha's voice) asking how {exam_name} went today."
+                    ),
+                    "--deliver", f"telegram:{telegram_user_id}",
+                    "--repeat", "1",
+                    "--name", f"{job_base}-followup",
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+        except Exception:
+            logger.exception("failed to schedule exam-eve jobs for %s / %s", telegram_user_id, exam_name)
+
+
+def _day_before(iso_date: str) -> str:
+    from datetime import datetime, timedelta
+
+    d = datetime.strptime(iso_date, "%Y-%m-%d") - timedelta(days=1)
+    return d.strftime("%d %m *")  # cron day/month fields, matching "M H day month *"
+
+
+def _day_of(iso_date: str) -> str:
+    from datetime import datetime
+
+    d = datetime.strptime(iso_date, "%Y-%m-%d")
+    return d.strftime("%d %m *")
 
 
 class DishaStudentMemory(MemoryProvider):
