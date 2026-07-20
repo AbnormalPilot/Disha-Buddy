@@ -254,6 +254,14 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
     _set_disabled_toolsets(["terminal"])
     applied.append("agent.disabled_toolsets")
 
+    # Per-student memory isolation: the built-in MEMORY.md/USER.md are
+    # profile-wide, and this is one shared bot/profile for many students
+    # (see HANDOVER.md §2's architecture decision) — activating our own
+    # provider replaces the built-in one entirely rather than running
+    # alongside it (MemoryProvider's "Single Provider Rule"). Always set,
+    # not a wizard field — this isn't an operator choice.
+    setk("memory.provider", "disha-students")
+
     _persist_wizard_payload(payload)
     return applied
 

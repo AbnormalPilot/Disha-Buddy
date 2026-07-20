@@ -381,6 +381,19 @@ COPY control_plane/ /opt/hermes/control_plane/
 # installed into the same venv main-wrapper.sh already activates.
 RUN uv pip install --no-cache-dir fastapi "uvicorn[standard]" httpx pydantic
 
+# Makes `import disha` (and `import control_plane`) work from ANY Python
+# process using this venv — not just the control plane, which sets
+# PYTHONPATH itself in main-hermes-run. The gateway process is started by
+# `hermes gateway start`, an s6 service registered dynamically by hermes's
+# own service_manager (see gateway_ctl.py) with a run script we don't
+# author and that doesn't inherit our custom PYTHONPATH. A .pth file in
+# the venv's site-packages is picked up by every interpreter launch
+# regardless of env vars, which is what lets a memory-provider plugin
+# seeded onto the data volume (HERMES_HOME/plugins/disha-students/) do
+# `from disha.student_store import ...` when the gateway loads it.
+RUN site_packages="$(/opt/hermes/.venv/bin/python3 -c 'import site; print(site.getsitepackages()[0])')" && \
+    echo "/opt/hermes" > "${site_packages}/disha.pth"
+
 # Overrides the upstream main-hermes/run placeholder (`exec sleep
 # infinity`) with our control-plane service. Layered on via COPY here
 # rather than editing the vendored file in place, so the vendored tree

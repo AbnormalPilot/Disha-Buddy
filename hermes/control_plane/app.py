@@ -5,7 +5,7 @@ import time
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config_writer, gateway_ctl, persona, validators
+from . import config_writer, gateway_ctl, persona, plugin_seed, validators
 from .auth import require_control_token
 from .config_writer import WizardPayload
 from .state import ensure_dirs
@@ -36,6 +36,7 @@ class ConfigRequest(BaseModel):
 async def _startup() -> None:
     ensure_dirs()
     persona.seed_soul_if_absent()
+    plugin_seed.seed_memory_provider()
     existing = config_writer.load_wizard_payload()
     persona.write_agents_md(existing.persona_extra_instructions if existing else None)
     # Config on the volume survives container restarts, so setup is
