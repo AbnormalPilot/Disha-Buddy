@@ -60,18 +60,30 @@ class ConfigWriteError(RuntimeError):
         super().__init__(f"hermes config set {key} failed ({returncode}): {output[:1000]}")
 
 
-def _set_yaml_list(path_parts: list[str], value: list) -> None:
-    """Sets a dotted-path key to a real YAML list in config.yaml.
+def _set_yaml_value(path_parts: list[str], value) -> None:
+    """Sets a dotted-path key directly in config.yaml, bypassing
+    `hermes config set` entirely. Two distinct bugs in that command make
+    this necessary, both found by testing against the real CLI rather
+    than assuming the docs cover every case:
 
-    `hermes config set` can't do this: its value parser only coerces
-    bool/int/float (hermes_cli/config.py:set_config_value), so a JSON-
-    looking string like '["terminal"]' is stored as a literal string, not
-    a list. Its nested-path form (a.b.0 ...) can't create a list from
-    scratch either — `_set_nested`'s own docstring says "we do not grow
-    lists... the referenced index must already exist". So for any
-    list-typed key we do a direct read-modify-write using Hermes's own
-    YAML helpers — the same ones set_config_value uses internally —
-    instead of shelling out to a CLI that can't express the value.
+    1. List values: its value parser only coerces bool/int/float
+       (hermes_cli/config.py:set_config_value), so a JSON-looking string
+       like '["terminal"]' is stored as a literal string, not a list.
+       The nested-path form (a.b.0 ...) can't create a list from scratch
+       either — `_set_nested`'s own docstring says "we do not grow
+       lists... the referenced index must already exist".
+    2. Nested keys shaped like `*.env.SOMETHING_API_KEY`: the secret-vs-
+       config routing check does `key.upper().endswith(('_API_KEY',
+       '_TOKEN'))` against the WHOLE dotted path, not just the final
+       segment. `mcp_servers.datablue.env.DATABLUE_API_KEY` matches that
+       suffix, gets routed to save_env_value() with the entire dotted
+       string as the literal env var name, and blows up with "Invalid
+       environment variable name" — env vars can't contain dots. Any
+       mcp_servers.<name>.env.<KEY_ENDING_IN_API_KEY_OR_TOKEN> path hits
+       this, not just DataBlue's.
+
+    Uses the same YAML helpers set_config_value uses internally
+    (atomic_yaml_write, fast_safe_load), so behavior otherwise matches.
     """
     from hermes_cli.config import ensure_hermes_home, get_config_path
     from utils import atomic_yaml_write, fast_safe_load
@@ -88,9 +100,13 @@ def _set_yaml_list(path_parts: list[str], value: list) -> None:
             child = {}
             node[part] = child
         node = child
-    node[path_parts[-1]] = list(value)
+    node[path_parts[-1]] = value
     ensure_hermes_home()
     atomic_yaml_write(config_path, user_config, sort_keys=False)
+
+
+def _set_yaml_list(path_parts: list[str], value: list) -> None:
+    _set_yaml_value(path_parts, list(value))
 
 
 def _set_disabled_toolsets(toolsets: list[str]) -> None:
@@ -264,17 +280,22 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
             setk(key_env, payload.transcription_api_key)
 
     if payload.datablue_api_key:
-        # NOT registered as an mcp_servers.* entry yet: DataBlue's real API
-        # (confirmed live 2026-07-20) only exposes a plain REST endpoint —
-        # POST /v1/scrape with Authorization: Bearer — no /mcp or /v1/mcp
-        # endpoint exists (both 404). Registering a guessed MCP URL here
-        # would make the gateway log connection errors on every boot for
-        # no benefit. The real integration (task 7 — DataBlue MCP live
-        # lookup) most likely needs a small first-party MCP wrapper around
-        # this REST API rather than a hosted MCP endpoint DataBlue provides
-        # directly. For now we just persist the key as an env var so
-        # scripts/crawl_colleges.py (also task 7) can use it.
+        # DataBlue ships an official stdio MCP server (npm package
+        # @datablue/mcp), NOT a hosted HTTP MCP endpoint — confirmed via
+        # their docs (docs.datablue.dev/mcp) on 2026-07-20, after an
+        # earlier pass here wrongly guessed at a hosted /v1/mcp URL (404,
+        # removed). Registered exactly per their documented client-config
+        # example and the mcp_servers stdio shape in cli-config.yaml.example.
+        # npx/Node 22 are already in the image (Dockerfile's node_source
+        # stage), so no extra install step is needed.
         setk("DATABLUE_API_KEY", payload.datablue_api_key)
+        setk("mcp_servers.datablue.command", "npx")
+        _set_yaml_list(
+            ["mcp_servers", "datablue", "args"],
+            ["--yes", "--prefer-online", "@datablue/mcp@latest"],
+        )
+        # Not setk() — see _set_yaml_value's docstring, bug #2.
+        _set_yaml_value(["mcp_servers", "datablue", "env", "DATABLUE_API_KEY"], payload.datablue_api_key)
 
     # Safety: minors-facing product, no shell/terminal access, ever.
     _set_disabled_toolsets(["terminal"])

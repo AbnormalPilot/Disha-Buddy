@@ -16,6 +16,10 @@ services:
     command: ["sleep", "infinity"]
     volumes:
       - ./data:/data
+      # Bind-mounted (not COPYed into the image) so scripts/crawl_colleges.py
+      # can be edited/re-run without a rebuild — matches HANDOVER.md §8's
+      # "docker compose run hermes python scripts/crawl_colleges.py".
+      - ./scripts:/opt/hermes/scripts
     environment:
       HERMES_HOME: /data/hermes-home
       CONTROL_TOKEN: ${CONTROL_TOKEN:?set CONTROL_TOKEN in .env}
