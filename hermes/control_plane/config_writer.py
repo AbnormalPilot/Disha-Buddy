@@ -1,0 +1,162 @@
+"""Translates the /hermes wizard payload into Hermes's own config store.
+
+We deliberately don't hand-write config.yaml / .env ourselves. Hermes
+ships `hermes config set KEY VAL`, which already knows the schema and
+auto-routes secrets to .env vs everything else to config.yaml (see
+website/docs/user-guide/configuration.md). We just call it. This also
+means a future upstream config-schema change mostly stays compatible
+with us for free.
+
+Provider mapping note: this fork's model.provider enum doesn't include
+a plain "openai" value (see hermes_cli/models.py _PROVIDER_ALIASES) —
+direct OpenAI access goes through provider "custom" with an explicit
+base_url. We fold that mapping in here so the wizard can still offer a
+plain "OpenAI" choice without the operator needing to know that.
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+from dataclasses import dataclass, field
+
+from .state import WIZARD_CONFIG_PATH, ensure_dirs
+
+HERMES_BIN = "hermes"
+_SUBPROCESS_TIMEOUT = 20
+
+PROVIDER_BASE_URL = {
+    "openai": "https://api.openai.com/v1",
+}
+PROVIDER_HERMES_NAME = {
+    "openai": "custom",
+    "openrouter": "openrouter",
+    "anthropic": "anthropic",
+    "nous": "nous-api",
+    "custom": "custom",
+}
+
+TRANSCRIPTION_PROVIDERS = {"groq", "openai", "mistral", "xai", "local"}
+
+
+class ConfigWriteError(RuntimeError):
+    def __init__(self, key: str, returncode: int, output: str):
+        self.key = key
+        self.returncode = returncode
+        self.output = output
+        super().__init__(f"hermes config set {key} failed ({returncode}): {output[:1000]}")
+
+
+def _config_set(key: str, value: str) -> None:
+    try:
+        result = subprocess.run(
+            [HERMES_BIN, "config", "set", key, value],
+            capture_output=True,
+            text=True,
+            timeout=_SUBPROCESS_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ConfigWriteError(key, -1, f"timed out: {exc}") from exc
+    if result.returncode != 0:
+        raise ConfigWriteError(key, result.returncode, (result.stdout or "") + (result.stderr or ""))
+
+
+@dataclass
+class WizardPayload:
+    telegram_bot_token: str | None = None
+
+    llm_provider: str | None = None  # openai | openrouter | anthropic | nous | custom
+    llm_api_key: str | None = None
+    llm_model: str | None = None
+    llm_base_url: str | None = None  # only required/used when llm_provider == "custom"
+
+    transcription_provider: str | None = None  # groq | openai | mistral | xai | local
+    transcription_api_key: str | None = None
+    voice_enabled: bool = True
+
+    datablue_api_key: str | None = None
+
+    persona_extra_instructions: str | None = None
+
+    telegram_allowed_users: list[str] = field(default_factory=list)
+
+    def redacted(self) -> dict:
+        d = self.__dict__.copy()
+        for k in ("telegram_bot_token", "llm_api_key", "transcription_api_key", "datablue_api_key"):
+            if d.get(k):
+                d[k] = d[k][:4] + "***REDACTED***"
+        return d
+
+
+def load_wizard_payload() -> WizardPayload | None:
+    if not WIZARD_CONFIG_PATH.exists():
+        return None
+    try:
+        raw = json.loads(WIZARD_CONFIG_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    return WizardPayload(**{k: v for k, v in raw.items() if k in WizardPayload.__dataclass_fields__})
+
+
+def _persist_wizard_payload(payload: WizardPayload) -> None:
+    ensure_dirs()
+    # Secrets DO get written here (not just to Hermes's .env) so the wizard
+    # can re-populate its own fields (masked) on repeat visits without
+    # re-parsing Hermes's config.yaml/.env format. Never served to the
+    # browser unmasked - see control_plane/app.py's /status response.
+    WIZARD_CONFIG_PATH.write_text(json.dumps(payload.__dict__, indent=2))
+    WIZARD_CONFIG_PATH.chmod(0o600)
+
+
+def apply_wizard_payload(payload: WizardPayload) -> list[str]:
+    """Writes the payload into Hermes's config store. Returns the list of
+    config keys that were set (for a validation/debug trail); raises
+    ConfigWriteError on the first failure."""
+    applied: list[str] = []
+
+    def setk(key: str, value: str | None) -> None:
+        if value is None or value == "":
+            return
+        _config_set(key, value)
+        applied.append(key)
+
+    setk("TELEGRAM_BOT_TOKEN", payload.telegram_bot_token)
+    if payload.telegram_allowed_users:
+        setk("TELEGRAM_ALLOWED_USERS", ",".join(payload.telegram_allowed_users))
+
+    if payload.llm_provider:
+        hermes_provider = PROVIDER_HERMES_NAME.get(payload.llm_provider, payload.llm_provider)
+        setk("model.provider", hermes_provider)
+        base_url = payload.llm_base_url or PROVIDER_BASE_URL.get(payload.llm_provider)
+        setk("model.base_url", base_url)
+        setk("model.api_key", payload.llm_api_key)
+        setk("model.default", payload.llm_model)
+
+    if payload.transcription_provider:
+        setk("stt.provider", payload.transcription_provider)
+        setk("stt.enabled", "true" if payload.voice_enabled else "false")
+        key_env = {
+            "groq": "GROQ_API_KEY",
+            "openai": "VOICE_TOOLS_OPENAI_KEY",
+            "mistral": "MISTRAL_API_KEY",
+            "xai": "XAI_API_KEY",
+        }.get(payload.transcription_provider)
+        if key_env:
+            setk(key_env, payload.transcription_api_key)
+
+    if payload.datablue_api_key:
+        setk("mcp_servers.datablue.url", "https://api.datablue.dev/v1/mcp")
+        setk("mcp_servers.datablue.headers.Authorization", f"Bearer {payload.datablue_api_key}")
+        setk("mcp_servers.datablue.enabled", "true")
+
+    # Safety: minors-facing product, no shell/terminal access, ever.
+    setk("agent.disabled_toolsets", json.dumps(["terminal"]))
+
+    _persist_wizard_payload(payload)
+    return applied
+
+
+def is_configured() -> bool:
+    payload = load_wizard_payload()
+    if payload is None:
+        return False
+    return bool(payload.telegram_bot_token and payload.llm_provider and payload.llm_api_key)

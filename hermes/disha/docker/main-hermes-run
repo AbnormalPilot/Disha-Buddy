@@ -1,0 +1,26 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+# Disha Buddy control plane service.
+#
+# Overrides the upstream main-hermes/run placeholder (upstream's version
+# is `exec sleep infinity`, reserved explicitly for "a future long-lived
+# hermes process" — see the comment in that file). This IS that future
+# process: a small FastAPI app that the /hermes Next.js wizard talks to
+# over the compose network to configure and supervise the actual Hermes
+# gateway (which it does via `hermes gateway start/stop`, not by
+# supervising a child process itself — see control_plane/gateway_ctl.py).
+#
+# This file is installed by a COPY in hermes/Dockerfile's disha build
+# stage; the vendored docker/s6-rc.d/main-hermes/run is left untouched
+# on disk (see hermes/CUSTOMIZATIONS.md).
+
+export HOME=/opt/data
+export PYTHONPATH="/opt/hermes:${PYTHONPATH:-}"
+cd /opt/hermes
+# shellcheck disable=SC1091
+. /opt/hermes/.venv/bin/activate
+
+port="${CONTROL_PLANE_PORT:-8300}"
+
+[ "$(id -u)" = 0 ] || exec uvicorn control_plane.app:app --host 0.0.0.0 --port "$port" --log-level info
+exec s6-setuidgid hermes uvicorn control_plane.app:app --host 0.0.0.0 --port "$port" --log-level info

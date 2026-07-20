@@ -1,0 +1,29 @@
+services:
+  hermes:
+    build: ./hermes
+    volumes:
+      - ./data:/data
+    environment:
+      HERMES_HOME: /data/hermes-home
+      CONTROL_TOKEN: ${CONTROL_TOKEN:?set CONTROL_TOKEN in .env}
+      WEB_URL: http://web:3000
+      CRM_INGEST_TOKEN: ${CRM_INGEST_TOKEN:?set CRM_INGEST_TOKEN in .env}
+    restart: unless-stopped
+    # Port 8300 is intentionally NOT published to the host — the control
+    # plane is only reachable from the web container, over the compose
+    # network. The operator talks to it through /hermes, not directly.
+
+  web:
+    build: ./web
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      DATABASE_PATH: /data/crm.sqlite
+      HERMES_CONTROL_URL: http://hermes:8300
+      CONTROL_TOKEN: ${CONTROL_TOKEN:?set CONTROL_TOKEN in .env}
+      CRM_INGEST_TOKEN: ${CRM_INGEST_TOKEN:?set CRM_INGEST_TOKEN in .env}
+    restart: unless-stopped
+    depends_on:
+      - hermes

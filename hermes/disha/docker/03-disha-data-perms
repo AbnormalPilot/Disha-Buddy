@@ -1,0 +1,28 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+# Prepares the parts of the shared /data volume that upstream's own
+# stage2-hook.sh doesn't know about.
+#
+# stage2-hook.sh (upstream, runs as 01-hermes-setup) already creates and
+# chowns $HERMES_HOME (we set this to /data/hermes-home) to the hermes
+# user, including the UID/GID remap from HERMES_UID/HERMES_GID. What it
+# doesn't — and shouldn't, since it has no idea these paths exist —
+# handle is /data/config (control-plane-owned) and /data/colleges
+# (crawler-owned), both product-specific dirs under the single /data
+# bind mount this compose setup shares with the `web` container.
+#
+# We chmod the /data mount point itself (not recursively) rather than
+# chown it, because /data is shared with the web container which runs
+# as a different, unrelated UID and needs to create crm.sqlite there —
+# chowning the shared parent to hermes:hermes would just move the
+# permission problem onto web instead of fixing it. Runs after
+# 01-hermes-setup (numbered 03) so it sees the final, already-remapped
+# hermes UID/GID.
+set -e
+
+mkdir -p /data
+chmod 0777 /data
+
+mkdir -p /data/config /data/colleges
+chown hermes:hermes /data/config /data/colleges 2>/dev/null || \
+    echo "[disha] Warning: chown /data/{config,colleges} failed (rootless container?) — continuing"
