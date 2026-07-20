@@ -1,0 +1,4 @@
+name: disha-crm
+description: Logs message_out and cron_ping CRM events
+events:
+  - agent:end

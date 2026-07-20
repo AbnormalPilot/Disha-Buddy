@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS students (
     profile_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS session_map (
+    session_id TEXT PRIMARY KEY,
+    telegram_user_id TEXT NOT NULL,
+    updated_at TEXT
+);
 """
 
 # Keys worth surfacing by name in the injected context, in a sensible
@@ -49,7 +54,7 @@ _PROFILE_KEY_ORDER = [
 def _connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.execute(_SCHEMA)
+    conn.executescript(_SCHEMA)
     return conn
 
 
@@ -136,3 +141,47 @@ def format_for_context(profile: dict) -> str:
     if not lines:
         return ""
     return "Known facts about this student from previous conversations:\n" + "\n".join(lines)
+
+
+def set_session_mapping(session_id: str, telegram_user_id: str) -> None:
+    """Records which student a session_id belongs to.
+
+    Needed because some plugin hooks (transform_llm_output) get session_id
+    and NOT sender_id/user_id — confirmed by reading their actual call
+    site (agent/turn_finalizer.py), which doesn't pass it, unlike
+    pre_llm_call's. The memory provider's initialize() has both values
+    together already, so it's the natural place to record this.
+    """
+    if not session_id or not telegram_user_id:
+        return
+    with _lock:
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO session_map (session_id, telegram_user_id, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(session_id) DO UPDATE SET
+                    telegram_user_id = excluded.telegram_user_id,
+                    updated_at = excluded.updated_at
+                """,
+                (session_id, telegram_user_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def get_user_id_for_session(session_id: str) -> str | None:
+    if not session_id:
+        return None
+    with _lock:
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT telegram_user_id FROM session_map WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+    return row[0] if row else None

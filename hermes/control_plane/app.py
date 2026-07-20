@@ -36,7 +36,7 @@ class ConfigRequest(BaseModel):
 async def _startup() -> None:
     ensure_dirs()
     persona.seed_soul_if_absent()
-    plugin_seed.seed_memory_provider()
+    plugin_seed.seed_all()
     existing = config_writer.load_wizard_payload()
     persona.write_agents_md(existing.persona_extra_instructions if existing else None)
     # Config on the volume survives container restarts, so setup is

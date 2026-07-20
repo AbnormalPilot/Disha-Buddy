@@ -127,6 +127,11 @@ class DishaStudentMemory(MemoryProvider):
         # warning in agent/memory_provider.py's initialize() docstring).
         agent_context = kwargs.get("agent_context") or "primary"
         self._active = agent_context == "primary" and bool(self._user_id)
+        if self._active:
+            # Lets the transform_llm_output hook (disha-events plugin,
+            # safety-flag detection) resolve student_id from session_id,
+            # since that hook isn't given user_id directly.
+            student_store.set_session_mapping(session_id, self._user_id)
 
     def get_tool_schemas(self) -> list[dict]:
         return []

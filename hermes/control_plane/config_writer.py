@@ -60,20 +60,18 @@ class ConfigWriteError(RuntimeError):
         super().__init__(f"hermes config set {key} failed ({returncode}): {output[:1000]}")
 
 
-def _set_disabled_toolsets(toolsets: list[str]) -> None:
-    """Sets agent.disabled_toolsets as a real YAML list.
+def _set_yaml_list(path_parts: list[str], value: list) -> None:
+    """Sets a dotted-path key to a real YAML list in config.yaml.
 
     `hermes config set` can't do this: its value parser only coerces
     bool/int/float (hermes_cli/config.py:set_config_value), so a JSON-
     looking string like '["terminal"]' is stored as a literal string, not
-    a list. Its nested-path form (agent.disabled_toolsets.0 ...) can't
-    create a list from scratch either — `_set_nested`'s own docstring says
-    "we do not grow lists... the referenced index must already exist".
-    So for this one list-typed, safety-critical key (it's how we
-    permanently block shell/terminal access for a minors-facing product)
-    we do a direct read-modify-write using Hermes's own YAML helpers —
-    the same ones set_config_value uses internally — instead of shelling
-    out to a CLI that can't express the value we need.
+    a list. Its nested-path form (a.b.0 ...) can't create a list from
+    scratch either — `_set_nested`'s own docstring says "we do not grow
+    lists... the referenced index must already exist". So for any
+    list-typed key we do a direct read-modify-write using Hermes's own
+    YAML helpers — the same ones set_config_value uses internally —
+    instead of shelling out to a CLI that can't express the value.
     """
     from hermes_cli.config import ensure_hermes_home, get_config_path
     from utils import atomic_yaml_write, fast_safe_load
@@ -83,13 +81,41 @@ def _set_disabled_toolsets(toolsets: list[str]) -> None:
     if config_path.exists():
         with open(config_path, encoding="utf-8") as f:
             user_config = fast_safe_load(f) or {}
-    agent_cfg = user_config.setdefault("agent", {})
-    if not isinstance(agent_cfg, dict):
-        agent_cfg = {}
-        user_config["agent"] = agent_cfg
-    agent_cfg["disabled_toolsets"] = list(toolsets)
+    node = user_config
+    for part in path_parts[:-1]:
+        child = node.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            node[part] = child
+        node = child
+    node[path_parts[-1]] = list(value)
     ensure_hermes_home()
     atomic_yaml_write(config_path, user_config, sort_keys=False)
+
+
+def _set_disabled_toolsets(toolsets: list[str]) -> None:
+    _set_yaml_list(["agent", "disabled_toolsets"], toolsets)
+
+
+def _enable_plugin(name: str) -> None:
+    """Adds `name` to plugins.enabled without clobbering other entries —
+    general plugins (unlike our memory provider) are opt-in
+    (website/docs/user-guide/features/plugins.md's "Plugins are opt-in").
+    """
+    from hermes_cli.config import get_config_path
+    from utils import fast_safe_load
+
+    config_path = get_config_path()
+    current: list = []
+    if config_path.exists():
+        with open(config_path, encoding="utf-8") as f:
+            loaded = fast_safe_load(f) or {}
+        plugins_cfg = loaded.get("plugins")
+        if isinstance(plugins_cfg, dict) and isinstance(plugins_cfg.get("enabled"), list):
+            current = plugins_cfg["enabled"]
+    if name not in current:
+        current = current + [name]
+    _set_yaml_list(["plugins", "enabled"], current)
 
 
 def _clear_stale_custom_credentials(*, clear_base_url: bool) -> None:
@@ -261,6 +287,11 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
     # alongside it (MemoryProvider's "Single Provider Rule"). Always set,
     # not a wizard field — this isn't an operator choice.
     setk("memory.provider", "disha-students")
+
+    # CRM event logging (voice detection + safety-flag stripping) lives in
+    # a generic plugin, which — unlike the memory provider — is opt-in.
+    _enable_plugin("disha-events")
+    applied.append("plugins.enabled")
 
     _persist_wizard_payload(payload)
     return applied
