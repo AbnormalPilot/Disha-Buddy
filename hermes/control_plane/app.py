@@ -5,7 +5,7 @@ import time
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config_writer, gateway_ctl, validators
+from . import config_writer, gateway_ctl, persona, validators
 from .auth import require_control_token
 from .config_writer import WizardPayload
 from .state import ensure_dirs
@@ -16,6 +16,7 @@ _BOOT_TIME = time.time()
 
 class ConfigRequest(BaseModel):
     telegram_bot_token: str | None = None
+    telegram_bot_username: str | None = None
     telegram_allowed_users: list[str] = []
 
     llm_provider: str | None = None
@@ -34,6 +35,9 @@ class ConfigRequest(BaseModel):
 @app.on_event("startup")
 async def _startup() -> None:
     ensure_dirs()
+    persona.seed_soul_if_absent()
+    existing = config_writer.load_wizard_payload()
+    persona.write_agents_md(existing.persona_extra_instructions if existing else None)
     # Config on the volume survives container restarts, so setup is
     # genuinely one-time: if a previous run already configured and
     # started the gateway, bring it back up without operator action.
@@ -71,7 +75,7 @@ async def status(_: None = Depends(require_control_token)) -> dict:
         "uptime_seconds": gateway_ctl.uptime_seconds(),
         "control_plane_uptime_seconds": time.time() - _BOOT_TIME,
         "model": payload.llm_model if payload else None,
-        "bot_username": None,
+        "bot_username": payload.telegram_bot_username if payload else None,
         "last_error": last_err,
     }
 
@@ -83,7 +87,18 @@ async def set_config(body: ConfigRequest, _: None = Depends(require_control_toke
         applied = config_writer.apply_wizard_payload(payload)
     except config_writer.ConfigWriteError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    persona.write_agents_md(payload.persona_extra_instructions)
     return {"ok": True, "applied_keys": applied}
+
+
+@app.get("/persona")
+async def get_persona(_: None = Depends(require_control_token)) -> dict:
+    payload = config_writer.load_wizard_payload()
+    return {
+        "soul_md": persona.base_soul_md(),
+        "agents_md": persona.base_agents_md(),
+        "extra_instructions": payload.persona_extra_instructions if payload else None,
+    }
 
 
 @app.get("/config")

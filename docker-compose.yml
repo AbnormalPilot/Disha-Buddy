@@ -1,6 +1,19 @@
 services:
   hermes:
     build: ./hermes
+    # Without an explicit command, the container's foreground process
+    # (Docker's CMD, NOT an s6-supervised service — see main-wrapper.sh's
+    # routing comment in the Dockerfile) falls through to a bare `hermes`
+    # invocation, which starts the interactive chat REPL. With no TTY
+    # attached (any detached/compose run) it immediately hits "Input is
+    # not a terminal", prints "Goodbye!", and exits 0 — which
+    # `restart: unless-stopped` then dutifully restarts forever, recreating
+    # the WHOLE container (control plane included) in a loop. `sleep
+    # infinity` is upstream's own documented pattern for exactly this case
+    # (see main-wrapper.sh's routing table); the actual long-lived work
+    # (control plane, and later the gateway) runs as s6-supervised services
+    # regardless of what the foreground process is doing.
+    command: ["sleep", "infinity"]
     volumes:
       - ./data:/data
     environment:

@@ -37,6 +37,15 @@ async def validate_llm(provider: str | None, api_key: str | None, base_url: str 
         resolved_base_url = resolved_base_url or "https://api.anthropic.com/v1"
         headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
         url = f"{resolved_base_url.rstrip('/')}/models"
+    elif provider == "openrouter":
+        # OpenRouter's /models is a public catalog and returns 200 for ANY
+        # bearer value, fake or real — confirmed by hand against the live
+        # API. /auth/key is the endpoint that actually requires a valid key
+        # (also confirmed live: 401 "Missing Authentication header" for a
+        # garbage key).
+        resolved_base_url = resolved_base_url or "https://openrouter.ai/api/v1"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        url = f"{resolved_base_url.rstrip('/')}/auth/key"
     else:
         resolved_base_url = resolved_base_url or "https://openrouter.ai/api/v1"
         headers = {"Authorization": f"Bearer {api_key}"}
@@ -84,24 +93,23 @@ async def validate_transcription(provider: str | None, api_key: str | None) -> d
 async def validate_datablue(api_key: str | None) -> dict:
     if not api_key:
         return {"ok": False, "message": "no DataBlue API key provided"}
-    # Cheapest reachability check we can do without burning real scrape
-    # credits: hit the account/auth endpoint rather than /v1/scrape.
-    # NOTE: exact DataBlue endpoint path to confirm against their docs
-    # once we have real credentials to test against (tracked for the
-    # wizard end-to-end pass, checklist item 3).
-    url = "https://api.datablue.dev/v1/account"
+    # Confirmed live against the real API (2026-07-20): POST /v1/scrape with
+    # no auth -> 401 "Missing authentication credentials"; with a garbage
+    # Authorization: Bearer -> 401 "Invalid or expired token" (so Bearer is
+    # the right scheme, and that distinct message is what a bad key looks
+    # like). An empty body against a REAL key is expected to fail body
+    # validation (422, missing "url" or similar), not auth — so anything
+    # other than 401/403 here means the key itself was accepted, which is
+    # all this check needs to prove. This intentionally still costs zero
+    # scrape credits since the request never resolves to a real scrape.
+    url = "https://api.datablue.dev/v1/scrape"
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
+            resp = await client.post(url, headers={"Authorization": f"Bearer {api_key}"}, json={})
     except httpx.HTTPError as exc:
         return {"ok": False, "message": f"network error: {exc}"}
     if resp.status_code in (401, 403):
         return {"ok": False, "message": f"DataBlue rejected the API key (HTTP {resp.status_code})"}
-    if resp.status_code >= 400:
-        return {
-            "ok": False,
-            "message": f"DataBlue returned HTTP {resp.status_code} (endpoint may need confirming against real docs)",
-        }
     return {"ok": True, "message": "DataBlue key accepted"}
 
 

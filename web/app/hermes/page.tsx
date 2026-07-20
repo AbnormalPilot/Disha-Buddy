@@ -1,31 +1,39 @@
-async function getStatus() {
+import HermesClient from "./HermesClient";
+import type { StatusResponse } from "./types";
+
+async function getStatus(): Promise<StatusResponse> {
   const base = process.env.HERMES_CONTROL_URL ?? "http://hermes:8300";
   const token = process.env.CONTROL_TOKEN ?? "";
-  try {
-    const res = await fetch(`${base}/status`, {
-      headers: { "X-Control-Token": token },
-      cache: "no-store",
-    });
-    if (!res.ok) return { error: `control plane returned ${res.status}` };
-    return await res.json();
-  } catch (err) {
-    return { error: `control plane unreachable: ${String(err)}` };
+  const res = await fetch(`${base}/status`, {
+    headers: { "X-Control-Token": token },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`control plane returned ${res.status}`);
   }
+  return res.json();
 }
 
 export default async function HermesPage() {
-  const status = await getStatus();
+  let status: StatusResponse | null = null;
+  let error: string | null = null;
+  try {
+    status = await getStatus();
+  } catch (err) {
+    error = String(err);
+  }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Hermes setup &amp; control</h1>
-      <p className="text-sm text-neutral-500">
-        The full wizard (Telegram / LLM / voice / DataBlue / persona steps) lands in the next
-        build pass. This page currently proves the control-plane connection end to end.
-      </p>
-      <pre className="overflow-x-auto rounded bg-neutral-900 p-4 text-xs text-neutral-100">
-        {JSON.stringify(status, null, 2)}
-      </pre>
+    <main className="min-h-screen bg-neutral-950 p-8">
+      <div className="mx-auto mb-8 max-w-2xl">
+        <h1 className="text-2xl font-semibold text-neutral-50">Hermes setup &amp; control</h1>
+      </div>
+      {error && (
+        <div className="mx-auto max-w-2xl rounded border border-red-900 bg-red-950 p-4 text-sm text-red-300">
+          Couldn&apos;t reach the control plane: {error}
+        </div>
+      )}
+      {status && <HermesClient initialStatus={status} />}
     </main>
   );
 }
