@@ -31,6 +31,7 @@ PROVIDER_HERMES_NAME = {
     "openai": "custom",
     "openrouter": "openrouter",
     "anthropic": "anthropic",
+    "gemini": "gemini",
     "nous": "nous-api",
     "custom": "custom",
 }
@@ -44,6 +45,7 @@ PROVIDER_HERMES_NAME = {
 PROVIDER_API_KEY_ENV = {
     "openrouter": "OPENROUTER_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
     "nous": "NOUS_API_KEY",
 }
 
@@ -90,10 +92,11 @@ def _set_disabled_toolsets(toolsets: list[str]) -> None:
     atomic_yaml_write(config_path, user_config, sort_keys=False)
 
 
-def _clear_stale_model_api_key() -> None:
-    """Removes a leftover inline model.api_key/api_mode when switching to a
-    named provider (openrouter/anthropic/nous) that authenticates via env
-    var instead. Reuses hermes_cli.config.clear_model_endpoint_credentials
+def _clear_stale_custom_credentials(*, clear_base_url: bool) -> None:
+    """Removes leftover inline model.api_key/api_mode (and optionally
+    base_url) when switching to a named provider (openrouter/anthropic/
+    gemini/nous) that authenticates via env var and its own built-in
+    base_url instead. Reuses hermes_cli.config.clear_model_endpoint_credentials
     — the exact function upstream wrote for this scenario ("leaving these
     fields behind keeps secrets in config.yaml and can contaminate later
     custom resolution paths"). Only touches the file when there's actually
@@ -108,9 +111,14 @@ def _clear_stale_model_api_key() -> None:
     with open(config_path, encoding="utf-8") as f:
         user_config = fast_safe_load(f) or {}
     model_cfg = user_config.get("model")
-    if not isinstance(model_cfg, dict) or ("api_key" not in model_cfg and "api_mode" not in model_cfg):
+    if not isinstance(model_cfg, dict):
         return
-    clear_model_endpoint_credentials(model_cfg, clear_api_key=True, clear_api_mode=True, clear_base_url=False)
+    stale_keys = {"api_key", "api_mode"} | ({"base_url"} if clear_base_url else set())
+    if not stale_keys & model_cfg.keys():
+        return
+    clear_model_endpoint_credentials(
+        model_cfg, clear_api_key=True, clear_api_mode=True, clear_base_url=clear_base_url
+    )
     atomic_yaml_write(config_path, user_config, sort_keys=False)
 
 
@@ -195,13 +203,25 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
     if payload.llm_provider:
         hermes_provider = PROVIDER_HERMES_NAME.get(payload.llm_provider, payload.llm_provider)
         setk("model.provider", hermes_provider)
-        base_url = payload.llm_base_url or PROVIDER_BASE_URL.get(payload.llm_provider)
-        setk("model.base_url", base_url)
         env_key = PROVIDER_API_KEY_ENV.get(payload.llm_provider)
         if env_key:
+            # Named/built-in provider: hermes already knows its correct
+            # base_url internally (see PROVIDER_HERMES_NAME's docstring).
+            # We must NOT set model.base_url ourselves here — a stale one
+            # from a PREVIOUS custom/openai config silently overrides
+            # hermes's own resolution instead of erroring, which is
+            # exactly what happened in testing (a leftover OpenRouter
+            # base_url survived a switch to Gemini and would have sent
+            # every Gemini request to openrouter.ai). Clear both inline
+            # credential fields the custom path might have left behind.
             setk(env_key, payload.llm_api_key)
-            _clear_stale_model_api_key()
+            _clear_stale_custom_credentials(clear_base_url=True)
         else:
+            # "custom" (and "openai", which we map onto hermes's "custom"
+            # provider) has no dedicated env var or built-in base_url —
+            # both must be supplied inline.
+            base_url = payload.llm_base_url or PROVIDER_BASE_URL.get(payload.llm_provider)
+            setk("model.base_url", base_url)
             setk("model.api_key", payload.llm_api_key)
         setk("model.default", payload.llm_model)
 

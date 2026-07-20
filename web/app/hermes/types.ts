@@ -1,4 +1,4 @@
-export type LlmProvider = "openrouter" | "anthropic" | "nous" | "openai" | "custom";
+export type LlmProvider = "openrouter" | "anthropic" | "gemini" | "nous" | "openai" | "custom";
 export type TranscriptionProvider = "groq" | "openai" | "mistral" | "xai" | "local";
 
 export interface WizardFormState {

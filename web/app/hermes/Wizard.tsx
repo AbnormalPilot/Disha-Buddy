@@ -10,6 +10,7 @@ const LLM_PROVIDERS = [
   { value: "openrouter", label: "OpenRouter" },
   { value: "openai", label: "OpenAI" },
   { value: "anthropic", label: "Anthropic" },
+  { value: "gemini", label: "Google Gemini" },
   { value: "nous", label: "Nous Portal (API key)" },
   { value: "custom", label: "Custom (OpenAI-compatible base URL)" },
 ];
