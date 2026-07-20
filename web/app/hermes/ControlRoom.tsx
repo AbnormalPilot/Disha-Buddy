@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button } from "./ui";
-import type { StatusResponse } from "./types";
+import { Button, ValidateBadge } from "./ui";
+import type { StatusResponse, ValidateAllResponse } from "./types";
 
 async function api(path: string, opts?: RequestInit) {
   const res = await fetch(`/api/hermes/${path}`, {
@@ -42,6 +42,8 @@ export default function ControlRoom({
   const [logs, setLogs] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [revalidating, setRevalidating] = useState(false);
+  const [validation, setValidation] = useState<ValidateAllResponse | null>(null);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -60,6 +62,18 @@ export default function ControlRoom({
       setLogs(res.lines);
     } catch (err) {
       setError(String(err));
+    }
+  }
+
+  async function revalidate() {
+    setRevalidating(true);
+    setError(null);
+    try {
+      setValidation(await api("validate-stored", { method: "POST" }));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setRevalidating(false);
     }
   }
 
@@ -89,11 +103,25 @@ export default function ControlRoom({
           </span>
         </div>
         <div className="flex gap-2">
+          <Button variant="secondary" onClick={revalidate} disabled={revalidating}>
+            {revalidating ? "Checking…" : "Re-run validation"}
+          </Button>
           <Button variant="secondary" onClick={onEditConfig}>
             Edit configuration
           </Button>
         </div>
       </div>
+
+      {validation && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {Object.entries(validation).map(([key, result]) => (
+            <div key={key} className="flex flex-col gap-1">
+              <span className="text-xs font-medium capitalize text-neutral-400">{key}</span>
+              <ValidateBadge result={result} />
+            </div>
+          ))}
+        </div>
+      )}
 
       {status.last_error && (
         <div className="rounded border border-red-900 bg-red-950 p-3 text-xs text-red-300">

@@ -6,6 +6,8 @@ HERMES_HOME = Path(os.environ.get("HERMES_HOME", "/data/hermes-home"))
 CONFIG_DIR = Path(os.environ.get("DISHA_CONFIG_DIR", "/data/config"))
 WIZARD_CONFIG_PATH = CONFIG_DIR / "wizard.json"
 CONTROL_STATE_PATH = CONFIG_DIR / "control_state.json"
+# Matches scripts/crawl_colleges.py's DISHA_COLLEGES_DIR default exactly.
+COLLEGES_DIR = Path(os.environ.get("DISHA_COLLEGES_DIR", "/data/colleges"))
 
 # Hermes profiles default to "default" (== $HERMES_HOME itself) when a
 # container runs a single profile, which is our whole architecture: one

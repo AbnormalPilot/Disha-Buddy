@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Button, Field, Select, StepShell, TextArea, TextInput, ValidateBadge } from "./ui";
 import { EMPTY_FORM, toConfigPayload, type ValidateAllResponse, type ValidateResult, type WizardFormState } from "./types";
 
@@ -45,8 +46,10 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
+  const [collegesCount, setCollegesCount] = useState<number | null>(null);
 
   useEffect(() => {
+    api("colleges/count").then((r) => setCollegesCount(r.count)).catch(() => {});
     api("config").then((cfg) => {
       if (!cfg.configured) return;
       setForm((f) => ({
@@ -281,6 +284,22 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
             />
           </Field>
           <ValidateBadge result={validation.datablue} />
+          <div className="rounded border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-400">
+            {collegesCount === null
+              ? "Checking cached college data…"
+              : collegesCount > 0
+                ? `${collegesCount} college${collegesCount === 1 ? "" : "s"} cached and ready.`
+                : "No colleges cached yet."}{" "}
+            {collegesCount === 0 && (
+              <>
+                Run{" "}
+                <code className="rounded bg-neutral-800 px-1 py-0.5">
+                  docker compose run hermes python scripts/crawl_colleges.py
+                </code>{" "}
+                from a terminal on the host once your DataBlue key is set.
+              </>
+            )}
+          </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(2)}>
               Back
@@ -339,17 +358,23 @@ export default function Wizard({ onLaunched }: { onLaunched: () => void }) {
           </ul>
           {launchError && <ValidateBadge result={{ ok: false, message: launchError }} />}
           {launched ? (
-            <div className="flex flex-col gap-3 rounded border border-emerald-800 bg-emerald-950 p-4 text-sm text-emerald-300">
+            <div className="flex flex-col items-start gap-3 rounded border border-emerald-800 bg-emerald-950 p-4 text-sm text-emerald-300">
               <p>Disha is live.</p>
               {form.telegram_bot_username && (
-                <a
-                  className="underline"
-                  href={`https://t.me/${form.telegram_bot_username}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open t.me/{form.telegram_bot_username}
-                </a>
+                <>
+                  <a
+                    className="underline"
+                    href={`https://t.me/${form.telegram_bot_username}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open t.me/{form.telegram_bot_username}
+                  </a>
+                  <div className="rounded bg-white p-3">
+                    <QRCodeSVG value={`https://t.me/${form.telegram_bot_username}`} size={140} />
+                  </div>
+                  <p className="text-xs text-emerald-400">Scan to open the bot on a phone.</p>
+                </>
               )}
             </div>
           ) : (

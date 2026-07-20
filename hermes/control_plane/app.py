@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from . import config_writer, cron_seed, gateway_ctl, persona, plugin_seed, validators
 from .auth import require_control_token
 from .config_writer import WizardPayload
-from .state import ensure_dirs
+from .state import COLLEGES_DIR, ensure_dirs
 
 app = FastAPI(title="Disha Buddy control plane")
 _BOOT_TIME = time.time()
@@ -115,6 +115,27 @@ async def get_config(_: None = Depends(require_control_token)) -> dict:
 async def validate(body: ConfigRequest, _: None = Depends(require_control_token)) -> dict:
     payload = WizardPayload(**body.model_dump())
     return await validators.validate_all(payload)
+
+
+@app.post("/validate-stored")
+async def validate_stored(_: None = Depends(require_control_token)) -> dict:
+    """Re-runs the same live checks as /validate, but against the
+    already-saved config instead of a request body. Needed for the
+    control room's "re-run validation" (HANDOVER.md §6.1) — the
+    browser only ever sees masked secrets (see WizardPayload.redacted()),
+    so it has no real values to POST back through /validate itself.
+    """
+    payload = config_writer.load_wizard_payload()
+    if payload is None:
+        raise HTTPException(status_code=400, detail="not configured yet")
+    return await validators.validate_all(payload)
+
+
+@app.get("/colleges/count")
+async def colleges_count(_: None = Depends(require_control_token)) -> dict:
+    if not COLLEGES_DIR.is_dir():
+        return {"count": 0}
+    return {"count": sum(1 for f in COLLEGES_DIR.glob("*.json") if f.is_file())}
 
 
 @app.post("/gateway/start")
