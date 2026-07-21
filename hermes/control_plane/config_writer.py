@@ -175,6 +175,29 @@ def _config_set(key: str, value: str) -> None:
         raise ConfigWriteError(key, result.returncode, (result.stdout or "") + (result.stderr or ""))
 
 
+def set_env_var(key: str, value: str) -> None:
+    """Writes directly to .env via hermes_cli.config.save_env_value(),
+    bypassing `hermes config set` entirely.
+
+    Found by testing, not by reading: `hermes config set`'s secret-vs-
+    config routing (set_config_value in hermes_cli/config.py) only sends
+    a key to .env when it looks like a credential — an explicit allowlist
+    plus an endswith(('_API_KEY', '_TOKEN')) check. Runtime settings that
+    are consumed via plain os.getenv() but AREN'T credential-shaped —
+    confirmed for TELEGRAM_ALLOWED_USERS (gateway/authz_mixin.py) and
+    TELEGRAM_HOME_CHANNEL (gateway/run.py, cron/scheduler.py's
+    _HOME_TARGET_ENV_VARS) — fall through to config.yaml instead, as a
+    bare top-level key, where the gateway's os.getenv() check never
+    finds them. Confirmed live: `hermes config set TELEGRAM_ALLOWED_USERS
+    "123,456"` produced `TELEGRAM_ALLOWED_USERS: 123,456` in config.yaml,
+    no .env entry at all — meaning the wizard's allowlist field has been
+    silently inert since it was built. Use this for any such key instead.
+    """
+    from hermes_cli.config import save_env_value
+
+    save_env_value(key, value)
+
+
 @dataclass
 class WizardPayload:
     telegram_bot_token: str | None = None
@@ -233,7 +256,11 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
 
     setk("TELEGRAM_BOT_TOKEN", payload.telegram_bot_token)
     if payload.telegram_allowed_users:
-        setk("TELEGRAM_ALLOWED_USERS", ",".join(payload.telegram_allowed_users))
+        # Not setk() — see set_env_var's docstring. hermes config set
+        # would silently misroute this into config.yaml, where the
+        # gateway's os.getenv() check never sees it.
+        set_env_var("TELEGRAM_ALLOWED_USERS", ",".join(payload.telegram_allowed_users))
+        applied.append("TELEGRAM_ALLOWED_USERS")
 
     if payload.llm_provider:
         hermes_provider = PROVIDER_HERMES_NAME.get(payload.llm_provider, payload.llm_provider)

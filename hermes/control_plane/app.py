@@ -5,7 +5,7 @@ import time
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config_writer, cron_seed, gateway_ctl, persona, plugin_seed, validators
+from . import config_writer, cron_seed, gateway_ctl, pairing_ctl, persona, plugin_seed, validators
 from .auth import require_control_token
 from .config_writer import WizardPayload
 from .state import COLLEGES_DIR, ensure_dirs
@@ -132,6 +132,23 @@ async def colleges_count(_: None = Depends(require_control_token)) -> dict:
     if not COLLEGES_DIR.is_dir():
         return {"count": 0}
     return {"count": sum(1 for f in COLLEGES_DIR.glob("*.json") if f.is_file())}
+
+
+class PairingApproveRequest(BaseModel):
+    code: str
+
+
+@app.get("/pairing/pending")
+async def pairing_pending(_: None = Depends(require_control_token)) -> dict:
+    return {"pending": pairing_ctl.list_pending()}
+
+
+@app.post("/pairing/approve")
+async def pairing_approve(body: PairingApproveRequest, _: None = Depends(require_control_token)) -> dict:
+    result = pairing_ctl.approve(body.code)
+    if result is None:
+        raise HTTPException(status_code=400, detail="invalid, expired, or already-used code")
+    return {"ok": True, **result}
 
 
 @app.post("/gateway/start")

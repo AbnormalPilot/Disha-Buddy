@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, ValidateBadge } from "./ui";
+import { Button, TextInput, ValidateBadge } from "./ui";
 import type { StatusResponse, ValidateAllResponse } from "./types";
+
+interface PendingPairing {
+  platform: string;
+  code: string;
+  user_id: string;
+  user_name: string;
+  age_minutes: number;
+}
 
 async function api(path: string, opts?: RequestInit) {
   const res = await fetch(`/api/hermes/${path}`, {
@@ -44,17 +52,51 @@ export default function ControlRoom({
   const [error, setError] = useState<string | null>(null);
   const [revalidating, setRevalidating] = useState(false);
   const [validation, setValidation] = useState<ValidateAllResponse | null>(null);
+  const [pending, setPending] = useState<PendingPairing[]>([]);
+  const [codeInputs, setCodeInputs] = useState<Record<number, string>>({});
+  const [approving, setApproving] = useState<number | null>(null);
+
+  async function refreshPending() {
+    try {
+      const res = await api("pairing/pending");
+      setPending(res.pending);
+    } catch {
+      // transient poll failures are fine, next tick retries
+    }
+  }
 
   useEffect(() => {
+    refreshPending();
     const interval = setInterval(async () => {
       try {
         setStatus(await api("status"));
       } catch {
         // transient poll failures are fine, next tick retries
       }
+      refreshPending();
     }, POLL_MS);
     return () => clearInterval(interval);
   }, []);
+
+  async function approvePending(index: number) {
+    const code = (codeInputs[index] ?? "").trim();
+    if (!code) return;
+    setApproving(index);
+    setError(null);
+    try {
+      await api("pairing/approve", { method: "POST", body: JSON.stringify({ code }) });
+      await refreshPending();
+      setCodeInputs((c) => {
+        const next = { ...c };
+        delete next[index];
+        return next;
+      });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setApproving(null);
+    }
+  }
 
   async function refreshLogs() {
     try {
@@ -111,6 +153,38 @@ export default function ControlRoom({
           </Button>
         </div>
       </div>
+
+      {pending.length > 0 && (
+        <div className="flex flex-col gap-2 rounded border border-amber-800 bg-amber-950 p-4">
+          <h3 className="text-sm font-medium text-amber-200">
+            Waiting for approval ({pending.length})
+          </h3>
+          <p className="text-xs text-amber-400">
+            Someone messaged the bot for the first time. Ask them for the pairing code shown in
+            their chat and enter it below — they won&apos;t get a real reply until you approve.
+          </p>
+          {pending.map((p, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-40 truncate text-xs text-amber-200">
+                {p.user_name || p.user_id} · {p.age_minutes}m ago
+              </span>
+              <TextInput
+                placeholder="Enter their code"
+                value={codeInputs[i] ?? ""}
+                onChange={(e) => setCodeInputs((c) => ({ ...c, [i]: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && approvePending(i)}
+                className="flex-1"
+              />
+              <Button
+                onClick={() => approvePending(i)}
+                disabled={approving === i || !(codeInputs[i] ?? "").trim()}
+              >
+                {approving === i ? "…" : "Approve"}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {validation && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
