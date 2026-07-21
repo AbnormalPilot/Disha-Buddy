@@ -1,0 +1,7 @@
+# This script only ever runs inside the hermes container (`docker compose
+# run hermes python scripts/crawl_colleges.py`), where httpx is already
+# installed — see hermes/pyproject.toml and hermes/Dockerfile. This file
+# exists purely so a local editor/type-checker (Pylance, mypy, etc.) can
+# resolve the import if you point it at a venv with these installed;
+# it's not consumed by the container build or by compose.
+httpx==0.28.1
