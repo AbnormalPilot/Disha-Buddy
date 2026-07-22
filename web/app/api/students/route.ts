@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { q } from "@/lib/db";
 
 // See app/api/stats/route.ts's comment — same static-prerender pitfall.
 export const dynamic = "force-dynamic";
@@ -20,15 +20,12 @@ const PROFILE_FIELDS = [
 ];
 
 export async function GET() {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT s.*,
-              (SELECT COUNT(*) FROM events e WHERE e.student_id = s.id AND e.type = 'flag') AS flag_count
-       FROM students s
-       ORDER BY s.last_active DESC`,
-    )
-    .all() as any[];
+  const rows = await q<any>(
+    `SELECT s.*,
+            (SELECT COUNT(*)::int FROM events e WHERE e.student_id = s.id AND e.type = 'flag') AS flag_count
+     FROM students s
+     ORDER BY s.last_active DESC`,
+  );
 
   const students = rows.map((row) => {
     const profile = JSON.parse(row.profile_json || "{}");

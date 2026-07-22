@@ -161,6 +161,43 @@ def _clear_stale_custom_credentials(*, clear_base_url: bool) -> None:
     atomic_yaml_write(config_path, user_config, sort_keys=False)
 
 
+def _clear_model_default() -> None:
+    """Removes model.default from config.yaml so Hermes's own runtime
+    fallback (cli_agent_setup_mixin -> get_default_model_for_provider)
+    picks the model for the configured provider. Used when the wizard is
+    given a provider but no model AND we can't resolve a catalog default
+    ourselves — leaving the previous provider's model behind sends e.g.
+    "anthropic/claude-opus-4.6" to the Gemini API, which 404s on every
+    message (found live: wizard switch to Gemini with llm_model unset).
+    """
+    from hermes_cli.config import get_config_path
+    from utils import atomic_yaml_write, fast_safe_load
+
+    config_path = get_config_path()
+    if not config_path.exists():
+        return
+    with open(config_path, encoding="utf-8") as f:
+        user_config = fast_safe_load(f) or {}
+    model_cfg = user_config.get("model")
+    if not isinstance(model_cfg, dict) or "default" not in model_cfg:
+        return
+    del model_cfg["default"]
+    atomic_yaml_write(config_path, user_config, sort_keys=False)
+
+
+def _default_model_for_wizard_provider(wizard_provider: str) -> str:
+    """Best-effort catalog default for a wizard provider id ("gemini",
+    "nous", "openai", ...), or "" when the catalog has no entry (custom
+    endpoints). Uses the same cost-safe resolver as Hermes's own runtime
+    fallback so the two can never disagree.
+    """
+    try:
+        from hermes_cli.models import get_default_model_for_provider, normalize_provider
+        return get_default_model_for_provider(normalize_provider(wizard_provider))
+    except Exception:
+        return ""
+
+
 def _config_set(key: str, value: str) -> None:
     try:
         result = subprocess.run(
@@ -285,12 +322,38 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
             base_url = payload.llm_base_url or PROVIDER_BASE_URL.get(payload.llm_provider)
             setk("model.base_url", base_url)
             setk("model.api_key", payload.llm_api_key)
-        setk("model.default", payload.llm_model)
+        # A stale model.default from a previous provider must never survive
+        # a provider switch — "anthropic/claude-opus-4.6" sent to the Gemini
+        # API 404s on every message (same failure class as the stale
+        # base_url above, found live). If the operator didn't pick a model,
+        # write the provider's cost-safe catalog default; if the catalog
+        # doesn't know the provider (custom endpoints), drop the key so
+        # Hermes's runtime fallback resolves it instead.
+        model_default = payload.llm_model or _default_model_for_wizard_provider(payload.llm_provider)
+        if model_default:
+            setk("model.default", model_default)
+        else:
+            _clear_model_default()
+            applied.append("model.default (cleared)")
 
     # Product scope is text-only for now (Hindi/English/Hinglish, no voice
     # notes) — fixed default, not a wizard field, same pattern as
     # disabled_toolsets below.
     setk("stt.enabled", "false")
+
+    # Students must never see ops chrome (found live: "⏳ Working — 3 min —
+    # iteration 1/60" and "⚠️ Gateway shutting down" reached a student chat).
+    # Quiet every progress/status surface; keep interim assistant messages so
+    # Disha can still talk naturally mid-task. Values route through
+    # display_config._normalise, which accepts these string forms.
+    setk("display.tool_progress", "off")
+    setk("display.long_running_notifications", "false")
+    setk("display.busy_ack_detail", "false")
+    setk("display.cleanup_progress", "true")
+    setk("display.background_process_notifications", "off")
+    # Restart pings (e.g. from the CRM open-access toggle) are ops detail.
+    _set_yaml_value(["telegram", "gateway_restart_notification"], False)
+    applied.append("telegram.gateway_restart_notification")
 
     if payload.datablue_api_key:
         # DataBlue ships an official stdio MCP server (npm package
@@ -303,9 +366,25 @@ def apply_wizard_payload(payload: WizardPayload) -> list[str]:
         # stage), so no extra install step is needed.
         setk("DATABLUE_API_KEY", payload.datablue_api_key)
         setk("mcp_servers.datablue.command", "npx")
+        # NOT the plain `npx @datablue/mcp@latest` from their docs: the
+        # package's dist/index.js only calls main() when argv[1] equals
+        # import.meta.url, and under an npx bin shim argv[1] is the
+        # .bin/datablue-mcp SYMLINK while import.meta.url is the resolved
+        # real file — the guard fails and the process exits 0 without ever
+        # serving MCP ("Connection closed" on every gateway start, found
+        # live 2026-07-22, @datablue/mcp 1.2.0). Resolving the symlink and
+        # handing the real file to node directly makes the guard pass.
         _set_yaml_list(
             ["mcp_servers", "datablue", "args"],
-            ["--yes", "--prefer-online", "@datablue/mcp@latest"],
+            [
+                "--yes",
+                "--prefer-online",
+                "-p",
+                "@datablue/mcp@latest",
+                "sh",
+                "-c",
+                'exec node "$(readlink -f "$(command -v datablue-mcp)")"',
+            ],
         )
         # Not setk() — see _set_yaml_value's docstring, bug #2.
         _set_yaml_value(["mcp_servers", "datablue", "env", "DATABLUE_API_KEY"], payload.datablue_api_key)

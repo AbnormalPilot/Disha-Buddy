@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { q } from "@/lib/db";
 import { requireIngestToken } from "@/lib/ingestAuth";
 
 export async function POST(req: NextRequest) {
@@ -11,19 +11,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
-  const db = getDb();
   const now = new Date().toISOString();
   const profileJson = JSON.stringify(body.profile && typeof body.profile === "object" ? body.profile : {});
 
-  db.prepare(
+  await q(
     `INSERT INTO students (id, name, username, profile_json, first_seen, last_active)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       name = COALESCE(excluded.name, students.name),
-       username = COALESCE(excluded.username, students.username),
-       profile_json = excluded.profile_json,
-       last_active = excluded.last_active`,
-  ).run(body.id, body.name ?? null, body.username ?? null, profileJson, now, now);
+     VALUES ($1, $2, $3, $4, $5, $5)
+     ON CONFLICT (id) DO UPDATE SET
+       name = COALESCE(EXCLUDED.name, students.name),
+       username = COALESCE(EXCLUDED.username, students.username),
+       profile_json = EXCLUDED.profile_json,
+       last_active = EXCLUDED.last_active`,
+    [body.id, body.name ?? null, body.username ?? null, profileJson, now],
+  );
 
   return NextResponse.json({ ok: true });
 }

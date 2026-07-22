@@ -1293,6 +1293,10 @@ _PROVIDER_ALIASES = {
 # hit the Portal; this fallback must stay cheap and network-free.
 _PROVIDER_SILENT_DEFAULT_OVERRIDES: dict[str, str] = {
     "nous": "deepseek/deepseek-v4-flash",
+    # Gemini's curated list leads with the pro flagship preview, which free-tier
+    # AI Studio keys have no quota for — every silent-default request 429s (and
+    # on paid keys it's the priciest choice). Pin the silent default to flash.
+    "gemini": "gemini-3.5-flash",
 }
 
 

@@ -25,6 +25,7 @@ _JOBS_PATH = HERMES_HOME / "cron" / "jobs.json"
 
 _DEADLINE_SWEEP_JOB = "disha-deadline-sweep"
 _NIGHTLY_REFRESH_JOB = "disha-nightly-refresh"
+_FOLLOW_UP_SWEEP_JOB = "disha-follow-up-sweep"
 
 
 def _existing_job_names() -> set[str]:
@@ -75,6 +76,21 @@ def seed_jobs() -> None:
                 "--no-agent",
                 "--deliver", "local",
                 "--name", _NIGHTLY_REFRESH_JOB,
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+
+    # 18:30 IST: evening, after school/coaching — when a check-in is most
+    # likely to be read and answered. Selection + anti-spam guards live in
+    # the script itself; see follow_up_sweep.py's docstring.
+    if _FOLLOW_UP_SWEEP_JOB not in existing:
+        subprocess.run(
+            [
+                "hermes", "cron", "add", "30 18 * * *", "",
+                "--script", "follow_up_sweep.py",
+                "--no-agent",
+                "--deliver", "local",
+                "--name", _FOLLOW_UP_SWEEP_JOB,
             ],
             capture_output=True, text=True, timeout=30,
         )

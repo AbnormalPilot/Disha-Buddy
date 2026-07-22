@@ -37,7 +37,9 @@ services:
     volumes:
       - ./data:/data
     environment:
-      DATABASE_PATH: /data/crm.sqlite
+      # Neon Postgres — the shared, team-wide CRM store (replaces the old
+      # /data/crm.sqlite volume file; see web/scripts/migrate-sqlite-to-neon.mjs).
+      DATABASE_URL: ${NEON_CONNECTION_STRING:?set NEON_CONNECTION_STRING in .env}
       HERMES_CONTROL_URL: http://hermes:8300
       CONTROL_TOKEN: ${CONTROL_TOKEN:?set CONTROL_TOKEN in .env}
       CRM_INGEST_TOKEN: ${CRM_INGEST_TOKEN:?set CRM_INGEST_TOKEN in .env}

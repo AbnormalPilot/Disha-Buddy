@@ -5,7 +5,7 @@ import time
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config_writer, cron_seed, gateway_ctl, pairing_ctl, persona, plugin_seed, validators
+from . import access_ctl, config_writer, cron_seed, gateway_ctl, pairing_ctl, persona, plugin_seed, validators
 from .auth import require_control_token
 from .config_writer import WizardPayload
 from .state import COLLEGES_DIR, ensure_dirs
@@ -132,6 +132,29 @@ async def colleges_count(_: None = Depends(require_control_token)) -> dict:
     if not COLLEGES_DIR.is_dir():
         return {"count": 0}
     return {"count": sum(1 for f in COLLEGES_DIR.glob("*.json") if f.is_file())}
+
+
+class AccessRequest(BaseModel):
+    allow_all: bool
+
+
+@app.get("/access")
+async def get_access(_: None = Depends(require_control_token)) -> dict:
+    return {"allow_all": access_ctl.is_open()}
+
+
+@app.post("/access")
+async def set_access(body: AccessRequest, _: None = Depends(require_control_token)) -> dict:
+    try:
+        restarted = access_ctl.set_open(body.allow_all)
+    except gateway_ctl.GatewayCommandError as exc:
+        # The flag itself is persisted before the restart attempt, so
+        # surface the restart failure but tell the client the setting stuck.
+        raise HTTPException(
+            status_code=502,
+            detail=f"setting saved, but gateway restart failed: {exc}",
+        ) from exc
+    return {"ok": True, "allow_all": body.allow_all, "gateway_restarted": restarted}
 
 
 class PairingApproveRequest(BaseModel):

@@ -25,6 +25,14 @@ const config: Config = {
         "coral-dark": "#B33A1F",
         rule: "#D8D2C4",
         sage: "#3F5C44",
+        // v2 landing palette (cobalt-on-ivory). The older paper/coral tokens
+        // above stay: /hermes setup pages still use them.
+        ivory: "#F7F7F4",
+        night: "#14181D",
+        dusk: "#575E68",
+        cobalt: "#1D4FD7",
+        "cobalt-deep": "#16389D",
+        hairline: "#E4E5DF",
       },
       fontFamily: {
         display: ["var(--font-display)"],
