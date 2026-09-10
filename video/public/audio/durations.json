@@ -1,0 +1,26 @@
+[
+  {
+    "id": "intro",
+    "seconds": 6.91
+  },
+  {
+    "id": "problem",
+    "seconds": 18.01
+  },
+  {
+    "id": "solution",
+    "seconds": 17.39
+  },
+  {
+    "id": "demo",
+    "seconds": 23.75
+  },
+  {
+    "id": "tech",
+    "seconds": 14.51
+  },
+  {
+    "id": "future",
+    "seconds": 9.96
+  }
+]
